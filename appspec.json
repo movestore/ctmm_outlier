@@ -16,9 +16,6 @@
         "name": "dplyr"
       },
       {
-        "name": "tidyr"
-      },
-      {
         "name": "ggiraph"
       },
       {

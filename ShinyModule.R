@@ -150,14 +150,13 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   reactive_data <- reactive({
     req(input$select_var)
 
-    outl_tibbl <- unlist(sapply(outl(), \(x) x[, input$select_var]))
-    req(length(outl_tibbl) > 0)
+    # Values of the selected variable (speed or distance), pooled across
+    # animals. lapply() keeps this a plain vector; sapply() would return a
+    # matrix when all animals have the same number of locations.
+    values <- unlist(lapply(outl(), \(x) x[[input$select_var]]), use.names = FALSE)
+    req(length(values) > 0)
 
-    tbl <- as_tibble(outl_tibbl)
-    req(ncol(tbl) > 0)
-
-    tbl |>
-      pivot_longer(everything(), names_to = "Individium", values_to = "speed")
+    tibble(value = values)
   })
 
   observeEvent(slider_quantiles(), {
@@ -216,11 +215,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     hi <- bounds()[2]
 
     plot_data <- reactive_data() |>
-      filter(speed >= lo & speed <= hi)
+      filter(value >= lo & value <= hi)
 
     validate(need(nrow(plot_data) > 0, "No points in the selected range."))
 
-    gg <- ggplot(plot_data, aes(x=speed)) +
+    gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
       labs(x = if (input$select_var == "speed") "Speed (m/s)" else "Distance (m)") +
       theme_ipsum_rc()
