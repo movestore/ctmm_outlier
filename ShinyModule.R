@@ -124,7 +124,9 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   filtered_outl <- reactive({
-    if (is.null(input$slider_filtertest)) return(outl())
+    # Wait for the range slider so the plot draws once, with the final range,
+    # instead of drawing all points first and redrawing when the slider appears
+    req(input$slider_filtertest)
     var <- input$select_var
     lo <- bounds()[1]
     hi <- bounds()[2]
