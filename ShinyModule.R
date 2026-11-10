@@ -1,7 +1,6 @@
 library(shiny)
 library(dplyr)
 library(ggplot2)
-library(tidyr)
 library(ggiraph)
 library(hrbrthemes)
 library(ctmm)
@@ -9,12 +8,10 @@ library(purrr)
 library(shinyWidgets)
 library(shinycssloaders)
 
-# set some default styling for ggirafe
-css_default_hover <- girafe_css_bicolor(primary = "#8f7d75", secondary = "#fadccf")
+# Default styling for the interactive (ggiraph) histogram
 hrbrthemes::import_roboto_condensed()
 
 set_girafe_defaults(
-  # opts_hover = opts_hover(css = css_default_hover),
   opts_zoom = opts_zoom(min = 1, max = 4),
   opts_tooltip = opts_tooltip(css = "padding:3px;background-color:#333333;color:white;"),
   opts_sizing = opts_sizing(rescale = TRUE),
