@@ -5,7 +5,7 @@ MoveApps
 GitHub repository: https://github.com/movestore/ctmm_outlier
 
 <p align="center">
-  <img alt="Screenshot of the Apps UI" src="readme_thumbnail.png" width="600">
+  <img alt="Screenshot of the App's UI" src="readme_thumbnail.png" width="600">
 </p>
 
 ## Description
