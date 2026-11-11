@@ -85,3 +85,12 @@ returns no data.
   applied once.
 - The data are filtered on every change in the App, so the output always
   reflects the current slider settings.
+
+The outlier statistics are described in Fleming, C. H., et al. (2020). A
+comprehensive framework for handling location error in animal tracking data.
+*bioRxiv*. https://doi.org/10.1101/2020.06.12.130195
+
+The `ctmm` package is described in Calabrese, J. M., Fleming, C. H., &
+Gurarie, E. (2016). ctmm: An R package for analyzing animal relocation data as
+a continuous-time stochastic process. *Methods in Ecology and Evolution*,
+7(9), 1124–1132. https://doi.org/10.1111/2041-210X.12559
