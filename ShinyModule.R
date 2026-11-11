@@ -1,7 +1,6 @@
 library(shiny)
 library(dplyr)
 library(ggplot2)
-library(tidyr)
 library(ggiraph)
 library(hrbrthemes)
 library(ctmm)
@@ -9,12 +8,10 @@ library(purrr)
 library(shinyWidgets)
 library(shinycssloaders)
 
-# set some default styling for ggirafe
-css_default_hover <- girafe_css_bicolor(primary = "#8f7d75", secondary = "#fadccf")
+# Default styling for the interactive (ggiraph) histogram
 hrbrthemes::import_roboto_condensed()
 
 set_girafe_defaults(
-  # opts_hover = opts_hover(css = css_default_hover),
   opts_zoom = opts_zoom(min = 1, max = 4),
   opts_tooltip = opts_tooltip(css = "padding:3px;background-color:#333333;color:white;"),
   opts_sizing = opts_sizing(rescale = TRUE),
@@ -29,7 +26,7 @@ shinyModuleUserInterface <- function(id, label) {
   ns <- NS(id) ## all IDs of UI functions need to be wrapped in ns()
   tagList(
     titlePanel("Outlier detection"),
-    p("On the x-axis distances from the median longitude and latitude are ploted and on the y-axis the minimum speed required to explain the location estimate's displacement as straight-line motion."),
+    p("On the x-axis distances from the median longitude and latitude are plotted and on the y-axis the minimum speed required to explain the location estimate's displacement as straight-line motion."),
     fluidRow(
       column(6,
              selectInput(
@@ -124,7 +121,9 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   filtered_outl <- reactive({
-    if (is.null(input$slider_filtertest)) return(outl())
+    # Wait for the range slider so the plot draws once, with the final range,
+    # instead of drawing all points first and redrawing when the slider appears
+    req(input$slider_filtertest)
     var <- input$select_var
     lo <- bounds()[1]
     hi <- bounds()[2]
@@ -148,14 +147,13 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   reactive_data <- reactive({
     req(input$select_var)
 
-    outl_tibbl <- unlist(sapply(outl(), \(x) x[, input$select_var]))
-    req(length(outl_tibbl) > 0)
+    # Values of the selected variable (speed or distance), pooled across
+    # animals. lapply() keeps this a plain vector; sapply() would return a
+    # matrix when all animals have the same number of locations.
+    values <- unlist(lapply(outl(), \(x) x[[input$select_var]]), use.names = FALSE)
+    req(length(values) > 0)
 
-    tbl <- as_tibble(outl_tibbl)
-    req(ncol(tbl) > 0)
-
-    tbl |>
-      pivot_longer(everything(), names_to = "Individium", values_to = "speed")
+    tibble(value = values)
   })
 
   observeEvent(slider_quantiles(), {
@@ -214,11 +212,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     hi <- bounds()[2]
 
     plot_data <- reactive_data() |>
-      filter(speed >= lo & speed <= hi)
+      filter(value >= lo & value <= hi)
 
     validate(need(nrow(plot_data) > 0, "No points in the selected range."))
 
-    gg <- ggplot(plot_data, aes(x=speed)) +
+    gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
       labs(x = if (input$select_var == "speed") "Speed (m/s)" else "Distance (m)") +
       theme_ipsum_rc()
@@ -286,9 +284,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   #return(reactive(filtered_data())) ## if data are not modified, the unmodified input data must be returned
+  # The range slider only exists once the UI has been opened in a browser.
+  # Until then, pass the input data on unchanged so the next app can run.
   return(
     reactive({
-      dat.f()
+      if (is.null(input$slider_filtertest)) data else dat.f()
     })
   )
 }
