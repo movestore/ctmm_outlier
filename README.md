@@ -20,8 +20,11 @@ relocation's displacement as straight-line motion, accounting for telemetry
 error.
 
 The App shows ctmm's outlier plot and a histogram of values for either
-distance or speed. The user enters a maximum value for the selected variable.
-Relocations above the maximum are removed from the output data and the App's
+distance or speed. The histogram displays the location of individual values
+below the plot so isolated values are more easily identified.
+
+The user enters a maximum value for either speed or distance, and
+relocations above that value are removed from the output data and the App's
 plots.
 
 ### Application scope

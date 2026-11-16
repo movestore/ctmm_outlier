@@ -15,8 +15,22 @@ set_girafe_defaults(
   opts_zoom = opts_zoom(min = 1, max = 4),
   opts_tooltip = opts_tooltip(css = "padding:3px;background-color:#333333;color:white;"),
   opts_sizing = opts_sizing(rescale = TRUE),
-  opts_toolbar = opts_toolbar(saveaspng = FALSE, position = "bottom", delay_mouseout = 5000)
+  opts_toolbar = opts_toolbar(saveaspng = FALSE, position = "bottom", delay_mouseout = 5000),
+  opts_selection = opts_selection(type = "none")
 )
+
+# Format a number for display, rounding up (not to nearest) to 4 significant
+# digits, and never rounding away whole units (10987.4 shows as 10,988).
+# Rounding up means a displayed value can be typed as the cutoff without
+# accidentally excluding the point it came from.
+format_round_up <- function(x, digits = 4) {
+  # Size of one unit in the last digit shown, e.g. 0.0001 for 0.9311
+  step <- pmin(10^(floor(log10(abs(x))) - digits + 1), 1)
+  # The small subtraction stops floating-point noise (e.g. 9400.0000001)
+  # from rounding up a value that is already exact
+  up <- ifelse(x == 0, 0, ceiling(x / step - 1e-9) * step)
+  formatC(up, digits = digits, format = "fg", big.mark = ",")
+}
 
 # to display messages to the user in the log file of the App in MoveApps
 # one can use the function from the src/common/logger.R file:
@@ -140,7 +154,6 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     m <- var_max()
     def <- cutoff_default()
     step <- cutoff_step()
-    fmt <- function(x) formatC(x, digits = 4, format = "fg", big.mark = ",")
     
     cutoff_panel <- function(var, label, unit) {
       conditionalPanel(
@@ -153,7 +166,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
           min = 0,
           step = step[[var]]
         ),
-        helpText(paste0("Largest value in the data: ", fmt(m[[var]]), " ", unit))
+        helpText(paste0("Largest value in the data: ", format_round_up(m[[var]]), " ", unit))
       )
     }
     
@@ -314,11 +327,50 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
 
     validate(need(nrow(plot_data) > 0, "No points at or below the cutoff."))
 
+    unit <- if (input$select_var == "speed") "m/s" else "m"
+
     gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
       labs(x = if (input$select_var == "speed") "Speed (m/s)" else "Distance (m)") +
       theme_ipsum_rc(plot_margin = margin(10, 10, 10, 10))
+
+    # Plot ticks below histogram showing where data values are. This allows us
+    # to see points even where they are very sparse. Hovering on a tick shows
+    # its value so that value can be used as an input if desired. We tally
+    # values in small bins to avoid making a tick for every point in large
+    # datasets.
+    rng <- range(plot_data$value)
+    slice_width <- diff(rng) / 1000
+    rug_data <- plot_data |>
+      mutate(slice = if (slice_width > 0) floor((value - rng[1]) / slice_width) else 0) |>
+      group_by(slice) |>
+      summarise(value = max(value), n = n()) |>
+      mutate(tooltip = paste0(
+        format_round_up(value), " ", unit,
+        ifelse(n > 1, paste0(" (", n, " points)"), "")
+      ))
+
+    # Draw ticks in a row below y=0. Tick height is scaled to the highest
+    # bar in the histogram.
+    top <- max(layer_data(gg)$count)
     
+    gg <- gg +
+      geom_linerange_interactive(
+        data = rug_data,
+        aes(x = value, ymin = -0.09 * top, ymax = -0.02 * top,
+            tooltip = tooltip, data_id = slice),
+        inherit.aes = FALSE, linewidth = 0.4, colour = "#333333",
+        hover_nearest = TRUE
+      ) +
+      scale_y_continuous(
+        expand = expansion(mult = c(0.02, 0.05)),
+        breaks = \(lims) pretty(c(0, lims[2])),
+        minor_breaks = \(lims) {
+          b <- pretty(c(0, lims[2]))
+          seq(0, max(b), by = diff(b)[1] / 2)
+        }
+      )
+
     girafe(ggobj = gg, width_svg = 8, height_svg = 3)
 
   })
@@ -376,12 +428,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     }
   })
 
-  #return(reactive(filtered_data())) ## if data are not modified, the unmodified input data must be returned
-  # The cutoff inputs only exist once the UI has been opened in a browser.
+  # The applied cutoffs are only set once the UI has been opened in a browser.
   # Until then, pass the input data on unchanged so the next app can run.
   return(
     reactive({
-      if (is.null(input$cutoff_speed)) data else dat.f()
+      if (is.null(applied$speed)) data else dat.f()
     })
   )
 }
