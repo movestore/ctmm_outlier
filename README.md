@@ -20,12 +20,20 @@ relocation's displacement as straight-line motion, accounting for telemetry
 error.
 
 The App shows ctmm's outlier plot and a histogram of values for either
-distance or speed. The histogram displays the location of individual values
-below the plot so isolated values are more easily identified.
+distance or speed. A row of ticks below the histogram marks individual values,
+making isolated values easier to identify. Hover over a tick to see its value.
 
-The user enters a maximum value for either speed or distance, and
-relocations above that value are removed from the output data and the App's
-plots.
+Enter a maximum value for either speed or distance to remove relocations above
+that value from the output data and the App's plots.
+
+This app only allows you to filter on one variable (speed or distance) at a
+time. In general, it is preferable to first attempt to identify outliers based
+on speed, as long gaps between fixes can lead to large distances between
+observations that are nonetheless reasonable given the time gap between them.
+If you remove speed-based outliers and still find anomalous distances,
+you can run this app again using distance-based filtering to remove them as
+well. Simply add this app to your workflow twice, using the first one to
+filter for speed and the second to filter for distance.
 
 ### Application scope
 #### Generality of App usability
@@ -49,10 +57,10 @@ none
 from the median location (m). Default: speed.
 
 **Recursive**: If checked, filtering is done recursively. That is, each time
-a relocation is removed, the speed is re-estimated using the remaining points.
-Any newly-calculated speeds that also exceed the input threshold are then
-removed, and so on until no speeds exceed the threshold. This option is only
-available when filtering on speed.
+relocations are removed, the speed is re-estimated using the remaining points.
+Any newly-calculated speeds that also exceed the maximum speed threshold are
+then removed. This continues until no speeds exceed the threshold. This option
+is only available when filtering on speed.
 
 **Maximum speed / Maximum distance**: The largest value of the selected
 variable to retain in the data. Relocations above this value are removed once
@@ -63,10 +71,10 @@ the **Apply** button is clicked. By default no points are removed.
 the value in the **Maximum speed** or **Maximum distance** box is yet to be
 applied.
 
-**Reset to maximum**: Set the cutoff back to the default value for the
+**Reset to maximum**: Set the cutoff value back to the default for the
 selected variable and apply it. This re-adds all points that had been removed.
 
-**Store settings**: click to store the current settings of the app for future
+**Store settings**: Click to store the current settings of the app for future
 workflow runs.
 
 ### Changes in output data
