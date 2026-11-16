@@ -6,6 +6,7 @@ library(hrbrthemes)
 library(ctmm)
 library(purrr)
 library(shinycssloaders)
+library(shinyjs)
 
 # Default styling for the interactive (ggiraph) histogram
 hrbrthemes::import_roboto_condensed()
@@ -43,40 +44,54 @@ shinyModuleUserInterface <- function(id, label) {
         border-color: #d5d5d5;
         color: #555555;
       }
-    ")),
-    titlePanel("Outlier detection"),
-    p("On the x-axis distances from the median longitude and latitude are plotted and on the y-axis the minimum speed required to explain the location estimate's displacement as straight-line motion."),
-    fluidRow(
-      column(6,
-             selectInput(
-               ns("select_var"),
-               label = "Select Variable",
-               choices =
-                 c("Speed (m/s)" = "speed",
-                   "Distance (m)" = "distance")
-             )
 
-      ),
-      column(6,
-             # Recursion only applies to speed, so only show it then
-             conditionalPanel(
-               condition = "input.select_var == 'speed'",
-               ns = ns,
-               checkboxInput(ns("recursive"), "Recursive", value = FALSE)
-             )
+      .cutoff-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+      
+      .checkbox input:disabled + span { color: #999999; }
+
+      @media (min-width: 768px) {
+        .outlier-sidebar { position: sticky; top: 10px; }
+      }
+    ")),
+    useShinyjs(),
+    titlePanel("Outlier detection"),
+    sidebarLayout(
+      tagAppendAttributes(class = "outlier-sidebar", sidebarPanel(
+        width = 3,
+        selectInput(
+          ns("select_var"),
+          label = "Select Variable",
+          choices = c("Speed (m/s)" = "speed", "Distance (m)" = "distance")
+        ),
+        checkboxInput(ns("recursive"), "Recursive (speed only)", value = FALSE),
+        uiOutput(ns("cutoff_ui")),
+        uiOutput(ns("dropped_note")),
+        hr(),
+        helpText(
+          "The outlier plot shows each location's distance from the median ",
+          "location (x-axis) and the minimum speed required to explain its ",
+          "displacement as straight-line motion (y-axis)."
+        )
       )),
-    uiOutput(ns("cutoff_ui")),
-    uiOutput(ns("dropped_note")),
-    hr(),
-    fluidRow(
-      column(6, withSpinner(plotOutput(ns("outl_plot"), height = "400px"), hide.ui = FALSE)),
-      column(6, withSpinner(girafeOutput(ns("plot"), height = "400px"), hide.ui = FALSE))
+      mainPanel(
+        width = 9,
+        withSpinner(plotOutput(ns("outl_plot"), height = "400px"), hide.ui = FALSE),
+        hr(),
+        # height = "auto" lets the box follow the histogram's height, which
+        # scales with the panel width
+        withSpinner(girafeOutput(ns("plot"), height = "auto"), hide.ui = FALSE)
+      )
     )
   )
 }
 
 shinyModule <- function(input, output, session, data){ ## The parameter "data" is reserved for the data object passed on from the previous app
   ns <- session$ns ## all IDs of UI functions need to be wrapped in ns()
+
+  # Disable recursive checkbox unless speed is the selected variable.
+  observeEvent(input$select_var, {
+    toggleState("recursive", condition = input$select_var == "speed")
+  })
 
   # Raw outliers; not affected by recursion. Sets the default cutoffs, so they
   # stay anchored to the actual data max.
@@ -145,8 +160,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     tagList(
       cutoff_panel("speed", "Maximum speed (m/s)", "m/s"),
       cutoff_panel("distance", "Maximum distance (m)", "m"),
-      actionButton(ns("apply_cutoff"), "Apply", class = "btn-sm apply-btn", disabled = TRUE),
-      actionButton(ns("reset_cutoff"), "Reset to maximum", class = "btn-sm")
+      div(
+        class = "cutoff-buttons",
+        actionButton(ns("apply_cutoff"), "Apply", class = "btn-sm apply-btn", disabled = TRUE),
+        actionButton(ns("reset_cutoff"), "Reset to maximum", class = "btn-sm")
+      )
     )
   })
 
@@ -271,6 +289,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     # Use `units = FALSE` to ensure that the input box units match the plot
     # units. ctmm picks the most appropriate unit, so without this, the units
     # can change as points are filtered.
+    par(mar = c(4.5, 4.5, 1, 1))
     plot(filtered_outl(), units = FALSE)
   })
 
@@ -298,8 +317,9 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
       labs(x = if (input$select_var == "speed") "Speed (m/s)" else "Distance (m)") +
-      theme_ipsum_rc()
-    girafe(ggobj = gg)
+      theme_ipsum_rc(plot_margin = margin(10, 10, 10, 10))
+    
+    girafe(ggobj = gg, width_svg = 8, height_svg = 3)
 
   })
 
