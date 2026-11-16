@@ -25,10 +25,10 @@
         "name": "purrr"
       },
       {
-        "name": "shinyWidgets"
+        "name": "shinycssloaders"
       },
       {
-        "name": "shinycssloaders"
+        "name": "shinyjs"
       }
     ]
   },

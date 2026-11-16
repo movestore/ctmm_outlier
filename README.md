@@ -10,7 +10,7 @@ GitHub repository: https://github.com/movestore/ctmm_outlier
 
 ## Description
 This app removes relocations that are likely outliers based on a user-selected
-range for either speed or distance. Based on the `outlie()` function of the ctmm
+maximum speed or distance. Based on the `outlie()` function of the ctmm
 package.
 
 ## Documentation
@@ -20,9 +20,20 @@ relocation's displacement as straight-line motion, accounting for telemetry
 error.
 
 The App shows ctmm's outlier plot and a histogram of values for either
-distance or speed. The user can adjust sliders to select a range of either
-distance or speed values to include. Relocations outside the selected range
-are removed from the output data and the App's plots.
+distance or speed. A row of ticks below the histogram marks individual values,
+making isolated values easier to identify. Hover over a tick to see its value.
+
+Enter a maximum value for either speed or distance to remove relocations above
+that value from the output data and the App's plots.
+
+This app only allows you to filter on one variable (speed or distance) at a
+time. In general, it is preferable to first attempt to identify outliers based
+on speed, as long gaps between fixes can lead to large distances between
+observations that are nonetheless reasonable given the time gap between them.
+If you remove speed-based outliers and still find anomalous distances,
+you can run this app again using distance-based filtering to remove them as
+well. Simply add this app to your workflow twice, using the first one to
+filter for speed and the second to filter for distance.
 
 ### Application scope
 #### Generality of App usability
@@ -42,49 +53,52 @@ The App should work for any kind of location data that can be converted to a
 none
 
 ### Settings
-**Select Variable**: the variable used for filtering: speed (m/s) or distance
+**Select Variable**: The variable used for filtering: speed (m/s) or distance
 from the median location (m). Default: speed.
 
 **Recursive**: If checked, filtering is done recursively. That is, each time
-a relocation is removed, the speed is re-estimated using the remaining points.
-Any newly-calculated speeds that also exceed the input threshold are then
-removed, and so on until no speeds exceed the threshold. This option is only
-available when filtering on speed.
+relocations are removed, the speed is re-estimated using the remaining points.
+Any newly-calculated speeds that also exceed the maximum speed threshold are
+then removed. This continues until no speeds exceed the threshold. This option
+is only available when filtering on speed.
 
-**Range**: the range of the selected variable to retain in the data. Relocations
-outside the range are removed. Default: the full range (nothing removed).
+**Maximum speed / Maximum distance**: The largest value of the selected
+variable to retain in the data. Relocations above this value are removed once
+the **Apply** button is clicked. By default no points are removed.
 
-**Percentile**: the same range expressed as percentiles. It moves together with
-**Range**, so either slider can be used.
+**Apply**: Click this button to filter the data using the currently entered
+**Maximum speed** or **Maximum distance**. The button is shown in blue when
+the value in the **Maximum speed** or **Maximum distance** box is yet to be
+applied.
 
-**Store settings**: click to store the current settings of the app for future
+**Reset to maximum**: Set the cutoff value back to the default for the
+selected variable and apply it. This re-adds all points that had been removed.
+
+**Store settings**: Click to store the current settings of the app for future
 workflow runs.
 
 ### Changes in output data
-The App filters the input data based on the range selected by the user.
-Relocations outside the selected range are removed from the output. Any animals
-that have no locations within the selected range are removed from the output
+The App filters the input data based on the maximum entered by the user.
+Relocations above the maximum are removed from the output. Any animals that
+have no locations at or below the maximum are removed from the output
 entirely.
 
 ### Errors and null handling
-**Animals with no relocations in range:** if all relocations of an animal are
-removed, the animal is removed from the output. The App displays a note
-and produces a warning when any animals are excluded in this way. If no animals
-include any points that are in range, neither plot is displayed and the app
-returns no data.
+**Animals with no relocations at or below the maximum:** if all relocations of
+an animal are removed, the animal is removed from the output. The App displays a
+note and produces a warning when any animals are excluded in this way. If no
+animals include any points at or below the maximum, neither plot is displayed
+and the app returns no data.
 
 ### Technical details
 - Speed and distance are calculated per animal with `ctmm::outlie()`. See its
   documentation for how they are estimated:
   [outlie()](https://ctmm-initiative.github.io/ctmm/reference/outlie.html).
-- Slider percentiles are pooled across all animals, so a percentile range does
-  not remove the same share of relocations from each animal.
 - With **Recursive**, `outlie()` is rerun after each round of removals, so the
   speeds used for filtering and in the plots are those of the remaining data.
-  Only the upper end of the range drives the recursion; the lower end is then
-  applied once.
-- The data are filtered on every change in the App, so the output always
-  reflects the current slider settings.
+- Speeds are shown in m/s and distances in m, in both the input and the plots.
+- The output always reflects the settings that were most recently applied, not
+  necessarily those that are currently displayed in the input boxes.
 
 The outlier statistics are described in Fleming, C. H., et al. (2020). A
 comprehensive framework for handling location error in animal tracking data.
