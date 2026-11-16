@@ -5,7 +5,6 @@ library(ggiraph)
 library(hrbrthemes)
 library(ctmm)
 library(purrr)
-library(shinyWidgets)
 library(shinycssloaders)
 
 # Default styling for the interactive (ggiraph) histogram
@@ -25,6 +24,26 @@ set_girafe_defaults(
 shinyModuleUserInterface <- function(id, label) {
   ns <- NS(id) ## all IDs of UI functions need to be wrapped in ns()
   tagList(
+    # Add CSS to apply button so it is easier to tell when it's been invalidated
+    tags$style(HTML("
+      .apply-btn:not(:disabled) {
+        background-color: #337ab7;
+        border-color: #2e6da4;
+        color: #ffffff;
+        box-shadow: 0 0 6px rgba(51, 122, 183, 0.5);
+      }
+      .apply-btn:not(:disabled):hover,
+      .apply-btn:not(:disabled):focus {
+        background-color: #286090;
+        border-color: #204d74;
+        color: #ffffff;
+      }
+      .apply-btn:disabled {
+        background-color: #eeeeee;
+        border-color: #d5d5d5;
+        color: #555555;
+      }
+    ")),
     titlePanel("Outlier detection"),
     p("On the x-axis distances from the median longitude and latitude are plotted and on the y-axis the minimum speed required to explain the location estimate's displacement as straight-line motion."),
     fluidRow(
@@ -46,8 +65,7 @@ shinyModuleUserInterface <- function(id, label) {
                checkboxInput(ns("recursive"), "Recursive", value = FALSE)
              )
       )),
-    uiOutput(ns("moreControls")),
-    uiOutput(ns("moreControls2")),
+    uiOutput(ns("cutoff_ui")),
     uiOutput(ns("dropped_note")),
     hr(),
     fluidRow(
@@ -60,17 +78,152 @@ shinyModuleUserInterface <- function(id, label) {
 shinyModule <- function(input, output, session, data){ ## The parameter "data" is reserved for the data object passed on from the previous app
   ns <- session$ns ## all IDs of UI functions need to be wrapped in ns()
 
-  # Raw outliers; not affected by recursion. Drives the slider's quantile space
-  # so its range stays anchored to the actual data max.
+  # Raw outliers; not affected by recursion. Sets the default cutoffs, so they
+  # stay anchored to the actual data max.
   outl_raw <- reactive({
     lapply(data, \(x) outlie(x, plot = FALSE))
   })
 
+  # Largest value of each variable in the data
+  var_max <- reactive({
+    sped_vals <- lapply(outl_raw(), function(x) x[["speed"]])
+    dist_vals <- lapply(outl_raw(), function(x) x[["distance"]])
+    
+    c(speed = max(unlist(sped_vals)), distance = max(unlist(dist_vals)))
+  })
+
+  # Scale step length used in input box up/down arrows to the data. Uses a
+  # round number near 1/100 of the data max. This ensures that step length
+  # is reasonable both for speed and distance, which are typically on very
+  # different scales.
+  cutoff_step <- reactive({
+    sapply(
+      var_max(),
+      function(x) {
+        if (!is.finite(x) || x <= 0) {
+          return(1)
+        }
+        
+        target <- x / 100
+        power <- 10^floor(log10(target))
+        nice <- c(1, 2, 5, 10)
+        power * nice[which.min(abs(nice - target / power))]
+      }
+    )
+  })
+
+  # Default cutoff is the data max rounded to the next step up, with floating
+  # point noise rounded out.
+  cutoff_default <- reactive({
+    round(ceiling(var_max() / cutoff_step()) * cutoff_step(), 10)
+  })
+
+  # Build conditional panel containing the UI for each variable. Only one
+  # variable is shown at a time. The numeric input for the cutoff depends on
+  # which variable (speed or distance) is selected.
+  output$cutoff_ui <- renderUI({
+    m <- var_max()
+    def <- cutoff_default()
+    step <- cutoff_step()
+    fmt <- function(x) formatC(x, digits = 4, format = "fg", big.mark = ",")
+    
+    cutoff_panel <- function(var, label, unit) {
+      conditionalPanel(
+        condition = sprintf("input.select_var == '%s'", var),
+        ns = ns,
+        numericInput(
+          ns(paste0("cutoff_", var)),
+          label,
+          value = def[[var]],
+          min = 0,
+          step = step[[var]]
+        ),
+        helpText(paste0("Largest value in the data: ", fmt(m[[var]]), " ", unit))
+      )
+    }
+    
+    tagList(
+      cutoff_panel("speed", "Maximum speed (m/s)", "m/s"),
+      cutoff_panel("distance", "Maximum distance (m)", "m"),
+      actionButton(ns("apply_cutoff"), "Apply", class = "btn-sm apply-btn", disabled = TRUE),
+      actionButton(ns("reset_cutoff"), "Reset to maximum", class = "btn-sm")
+    )
+  })
+
+  # Don't store button clicks in bookmark. Otherwise a reset clicked at any
+  # point would be restored on session start, overriding any true stored
+  # settings.
+  setBookmarkExclude(c("apply_cutoff", "reset_cutoff"))
+
+  # Store the values currently in place for each variable. This allows us to
+  # identify when the "Apply" button has been invalidated and needs to be
+  # clicked again.
+  applied <- reactiveValues(speed = NULL, distance = NULL)
+  
+  # Set the currently applied value from the input box's starting value for
+  # each variable. Necessary because the inputs themselves don't trigger plot
+  # updates, only the applied values do. If it's blank (i.e. if settings were
+  # saved with no value in the box) then fall back to the default.
+  observeEvent(input$cutoff_speed, {
+    x <- input$cutoff_speed
+    if (is.numeric(x) && !is.na(x)) {
+      applied$speed <- x
+    } else {
+      applied$speed <- cutoff_default()[["speed"]]
+      updateNumericInput(session, "cutoff_speed", value = applied$speed)
+    }
+  }, once = TRUE)
+
+  observeEvent(input$cutoff_distance, {
+    x <- input$cutoff_distance
+    if (is.numeric(x) && !is.na(x)) {
+      applied$distance <- x
+    } else {
+      applied$distance <- cutoff_default()[["distance"]]
+      updateNumericInput(session, "cutoff_distance", value = applied$distance)
+    }
+  }, once = TRUE)
+
+  # Determine if the apply button needs to be clicked. Returns TRUE when
+  # the selected variable's input box contains a number different from its
+  # currently applied cutoff.
+  apply_pending <- reactive({
+    req(input$select_var)
+    x <- input[[paste0("cutoff_", input$select_var)]]
+    current <- applied[[input$select_var]]
+    is.numeric(x) && !is.na(x) && !is.null(current) && x != current
+  })
+
+  observe({
+    updateActionButton(session, "apply_cutoff", disabled = !apply_pending())
+  })
+
+  observeEvent(input$apply_cutoff, {
+    # The button is disabled unless there's a valid value to apply, but check
+    # anyway in case the box changed after the button was last updated
+    req(apply_pending())
+    var <- input$select_var
+    applied[[var]] <- input[[paste0("cutoff_", var)]]
+  })
+
+  # Put the selected variable's cutoff back to its default (the data maximum)
+  # and apply it
+  observeEvent(input$reset_cutoff, {
+    var <- input$select_var
+    def <- cutoff_default()[[var]]
+    updateNumericInput(session, paste0("cutoff_", var), value = def)
+    applied[[var]] <- def
+  })
+
+  # Applied cutoff for the selected variable
+  cutoff <- reactive({
+    req(input$select_var)
+    req(applied[[input$select_var]])
+  })
+
   outl_rows <- reactive({
-    if (input$select_var == "speed" &&
-        isTRUE(input$recursive) &&
-        !is.null(input$slider_filtertest)) {
-      threshold <- bounds()[2]
+    if (input$select_var == "speed" && isTRUE(input$recursive)) {
+      threshold <- cutoff()
       map2(data, outl_raw(), function(x, xx) {
         rows <- seq_len(nrow(x))
         while (nrow(x) > 0 && max(xx[["speed"]]) > threshold) {
@@ -97,51 +250,28 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     lapply(outl_rows(), \(r) r$outl)
   })
 
-  # Quantile choices for the sliders, computed from raw outliers only.
-  slider_quantiles <- reactive({
-    req(input$select_var)
-    outl_tibbl <- unlist(sapply(outl_raw(), \(x) x[, input$select_var]))
-    req(length(outl_tibbl) > 0)
-    q <- quantile(outl_tibbl, probs = seq(0, 1, by = 0.01))
-    # Drop quantiles that would show as the same value on the slider
-    q[!duplicated(round(as.numeric(q), 6))]
-  })
-
-  # Filter bounds for the current slider selection. The slider shows quantiles
-  # rounded to 6 decimals; filtering on those rounded values can drop a point
-  # sitting exactly at a quantile (e.g. the minimum at 0%). So look up the
-  # unrounded quantile behind each selected value and filter on that instead.
-  bounds <- reactive({
-    req(input$slider_filtertest)
-    sel <- as.numeric(input$slider_filtertest)
-    q <- as.numeric(slider_quantiles())
-    idx <- match(round(sel, 6), round(q, 6))
-    # No match while the slider is still being rebuilt for a new variable
-    ifelse(is.na(idx), sel, q[idx])
-  })
-
   filtered_outl <- reactive({
-    # Wait for the range slider so the plot draws once, with the final range,
-    # instead of drawing all points first and redrawing when the slider appears
-    req(input$slider_filtertest)
     var <- input$select_var
-    lo <- bounds()[1]
-    hi <- bounds()[2]
+    hi <- cutoff()
     filtered <- lapply(outl(), \(x) {
-      keep <- x[[var]] >= lo & x[[var]] <= hi
+      keep <- x[[var]] <= hi
       out <- x[keep, , drop = FALSE]
       # `outlie` is an S4 object; data.frame subsetting drops that bit and breaks plot dispatch.
       class(out) <- class(x)
       asS4(out)
     })
-    # Leave out individuals with no points in range, matching the returned
+    # Leave out individuals with no points at or below the cutoff, matching the returned
     # data. ctmm's plot method can't draw an individual with zero rows.
     purrr::keep(filtered, \(x) nrow(x) > 0)
   })
 
   output$outl_plot <- renderPlot({
-    validate(need(length(filtered_outl()) > 0, "No points in the selected range."))
-    plot(filtered_outl())
+    validate(need(length(filtered_outl()) > 0, "No points at or below the cutoff."))
+    
+    # Use `units = FALSE` to ensure that the input box units match the plot
+    # units. ctmm picks the most appropriate unit, so without this, the units
+    # can change as points are filtered.
+    plot(filtered_outl(), units = FALSE)
   })
 
   reactive_data <- reactive({
@@ -156,65 +286,14 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     tibble(value = values)
   })
 
-  observeEvent(slider_quantiles(), {
-
-    quantiles <- slider_quantiles()
-
-    output$moreControls <- renderUI({
-
-      tagList(
-        sliderTextInput(ns("slider_filtertest"),
-                        label = "Range:",
-                        choices = round(as.numeric(quantiles), 6),
-                        selected = round(c(unique(as.numeric(quantiles))[1], as.numeric(quantiles)[length(as.numeric(quantiles))]), 6)
-        )
-      )
-    })
-
-    output$moreControls2 <- renderUI({
-      tagList(
-        sliderTextInput(ns("slider_filterperc"),
-                        label = "Percentile:",
-                        choices = names(quantiles),
-                        selected = c(names(quantiles)[1],
-                                     names(quantiles)[length(names(quantiles))]))
-      )
-    })
-  })
-
-  observeEvent(input$slider_filtertest,  {
-    req(input$slider_filterperc)
-    quantiles <- slider_quantiles()
-    ind <- match(round(as.numeric(input$slider_filtertest), 6), round(as.numeric(quantiles), 6))
-    req(!anyNA(ind))
-    new_perc <- names(quantiles)[ind]
-    if (!identical(new_perc, input$slider_filterperc)) {
-      updateSliderTextInput(session = session, inputId = "slider_filterperc", selected = new_perc)
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$slider_filterperc,  {
-    req(input$slider_filtertest)
-
-    quantiles <- slider_quantiles()
-    ind <- match(input$slider_filterperc, names(quantiles))
-    req(!anyNA(ind))
-    new_vals <- round(as.numeric(quantiles)[ind], 6)
-    if (!isTRUE(all.equal(new_vals, as.numeric(input$slider_filtertest)))) {
-      updateSliderTextInput(session = session, inputId = "slider_filtertest", selected = new_vals)
-    }
-    }, ignoreInit = TRUE)
-
   output$plot <- renderGirafe({
 
-    req(input$slider_filtertest)
-    lo <- bounds()[1]
-    hi <- bounds()[2]
+    hi <- cutoff()
 
     plot_data <- reactive_data() |>
-      filter(value >= lo & value <= hi)
+      filter(value <= hi)
 
-    validate(need(nrow(plot_data) > 0, "No points in the selected range."))
+    validate(need(nrow(plot_data) > 0, "No points at or below the cutoff."))
 
     gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
@@ -224,20 +303,14 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
 
   })
 
-  # Each individual's data within the selected range; NULL if it has no points in range
+  # Each individual's data at or below the cutoff; NULL if it has no such points
   filtered_data <- reactive({
 
-    req(input$slider_filtertest)
-    req(input$select_var)
-    # Wait for the slider to be rebuilt after the variable changes
-    req(all(round(as.numeric(input$slider_filtertest), 6) %in% round(as.numeric(slider_quantiles()), 6)))
-
     var <- input$select_var
-    lo <- bounds()[1]
-    hi <- bounds()[2]
+    hi <- cutoff()
     map2(data, outl_rows(), function(a, r) {
       b <- r$outl
-      ind <- which(b[[var]] >= lo & b[[var]] <= hi)
+      ind <- which(b[[var]] <= hi)
       if (length(ind) > 0) {
         a[r$rows[ind], ]
       } else {
@@ -246,7 +319,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     })
   })
 
-  # Individuals with no points in range, which are left out of the output
+  # Individuals with no points at or below the cutoff, which are left out of the output
   dropped_ids <- reactive({
     names(purrr::keep(filtered_data(), is.null))
   })
@@ -257,7 +330,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     p(
       class = "text-warning",
       paste0(
-        "No points in the selected range for: ", paste(ids, collapse = ", "),
+        "No points at or below the cutoff for: ", paste(ids, collapse = ", "),
         ". These animals will not be passed to the next app."
       )
     )
@@ -267,7 +340,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     ids <- dropped_ids()
     if (length(ids) > 0) {
       logger.warn(
-        "No points in the selected range for: %s. Removed from the output.",
+        "No points at or below the cutoff for: %s. Removed from the output.",
         paste(ids, collapse = ", ")
       )
     }
@@ -284,11 +357,11 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   #return(reactive(filtered_data())) ## if data are not modified, the unmodified input data must be returned
-  # The range slider only exists once the UI has been opened in a browser.
+  # The cutoff inputs only exist once the UI has been opened in a browser.
   # Until then, pass the input data on unchanged so the next app can run.
   return(
     reactive({
-      if (is.null(input$slider_filtertest)) data else dat.f()
+      if (is.null(input$cutoff_speed)) data else dat.f()
     })
   )
 }
