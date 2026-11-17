@@ -72,10 +72,13 @@ shinyModuleUserInterface <- function(id, label) {
     sidebarLayout(
       tagAppendAttributes(class = "outlier-sidebar", sidebarPanel(
         width = 3,
-        selectInput(
+        selectizeInput(
           ns("select_var"),
           label = "Select Variable",
-          choices = c("Speed (m/s)" = "speed", "Distance (m)" = "distance")
+          choices = c("Speed (m/s)" = "speed", "Distance (m)" = "distance"),
+          options = list(
+            plugins = list("autofill_disable") # prevent attempted password manager autofill prompts
+          )
         ),
         checkboxInput(ns("recursive"), "Recursive (speed only)", value = FALSE),
         uiOutput(ns("cutoff_ui")),
