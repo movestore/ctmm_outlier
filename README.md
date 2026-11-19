@@ -9,7 +9,7 @@ GitHub repository: https://github.com/movestore/ctmm_outlier
 </p>
 
 ## Description
-This app removes relocations that are likely outliers based on a user-selected
+This App removes relocations that are likely outliers based on a user-selected
 maximum speed or distance. Based on the `outlie()` function of the ctmm
 package.
 
@@ -26,13 +26,13 @@ making isolated values easier to identify. Hover over a tick to see its value.
 Enter a maximum value for either speed or distance to remove relocations above
 that value from the output data and the App's plots.
 
-This app only allows you to filter on one variable (speed or distance) at a
+This App only allows you to filter on one variable (speed or distance) at a
 time. In general, it is preferable to first attempt to identify outliers based
 on speed, as long gaps between fixes can lead to large distances between
 observations that are nonetheless reasonable given the time gap between them.
 If you remove speed-based outliers and still find anomalous distances,
-you can run this app again using distance-based filtering to remove them as
-well. Simply add this app to your workflow twice, using the first one to
+you can run this App again using distance-based filtering to remove them as
+well. Simply add this App to your Workflow twice, using the first one to
 filter for speed and the second to filter for distance.
 
 ### Application scope
@@ -74,8 +74,10 @@ applied.
 **Reset to maximum**: Set the cutoff value back to the default for the
 selected variable and apply it. This re-adds all points that had been removed.
 
-**Store settings**: Click to store the current settings of the app for future
-workflow runs.
+**Store settings**: Click to store the current settings of the App for future
+Workflow runs.
+
+**Restore default settings**: Click to restore the App's default settings.
 
 ### Changes in output data
 The App filters the input data based on the maximum entered by the user.
@@ -88,7 +90,7 @@ entirely.
 an animal are removed, the animal is removed from the output. The App displays a
 note and produces a warning when any animals are excluded in this way. If no
 animals include any points at or below the maximum, neither plot is displayed
-and the app returns no data.
+and the App returns no data.
 
 ### Technical details
 - Speed and distance are calculated per animal with `ctmm::outlie()`. See its

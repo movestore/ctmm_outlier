@@ -32,10 +32,6 @@ format_round_up <- function(x, digits = 4) {
   formatC(up, digits = digits, format = "fg", big.mark = ",")
 }
 
-# to display messages to the user in the log file of the App in MoveApps
-# one can use the function from the src/common/logger.R file:
-# logger.fatal() -> logger.trace()
-
 shinyModuleUserInterface <- function(id, label) {
   ns <- NS(id) ## all IDs of UI functions need to be wrapped in ns()
   tagList(
@@ -406,7 +402,7 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
       class = "text-warning",
       paste0(
         "No points at or below the cutoff for: ", paste(ids, collapse = ", "),
-        ". These animals will not be passed to the next app."
+        ". These animals will not be passed to the next App."
       )
     )
   })
