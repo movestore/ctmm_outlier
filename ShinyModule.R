@@ -185,43 +185,55 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   # settings.
   setBookmarkExclude(c("apply_cutoff", "reset_cutoff"))
 
-  # Store the values currently in place for each variable. This allows us to
-  # identify when the "Apply" button has been invalidated and needs to be
-  # clicked again.
-  applied <- reactiveValues(speed = NULL, distance = NULL)
-  
-  # Set the currently applied value from the input box's starting value for
-  # each variable. Necessary because the inputs themselves don't trigger plot
-  # updates, only the applied values do. If it's blank (i.e. if settings were
-  # saved with no value in the box) then fall back to the default.
+  # Collect all settings in the sidebar that when changed invalidate the status
+  # of the apply button
+  sidebar_settings <- reactive({
+    var <- req(input$select_var)
+    list(
+      var = var,
+      recursive = var == "speed" && isTRUE(input$recursive),
+      cutoff = input[[paste0("cutoff_", var)]]
+    )
+  })
+
+  # The settings last applied with the Apply button. Plots and output
+  # depend on this reactive value so that any changed settings necessitate
+  # a re-trigger by clicking on the Apply button.
+  applied <- reactiveVal(NULL)
+
+  # Before the first Apply click, the "applied" settings are considered to be
+  # whatever the settings start as (either defaults or stored settings)
+  init_applied <- observe({
+    s <- sidebar_settings()
+    req(!is.null(s$cutoff)) # the cutoff boxes have not been drawn yet
+    if (!isTRUE(is.finite(s$cutoff))) {
+      s$cutoff <- cutoff_default()[[s$var]]
+    }
+    applied(s)
+    init_applied$destroy()
+  })
+
+  # Fill a cutoff box that starts blank with its default, so it holds a value
+  # once the user switches to that variable
   observeEvent(input$cutoff_speed, {
-    x <- input$cutoff_speed
-    if (is.numeric(x) && !is.na(x)) {
-      applied$speed <- x
-    } else {
-      applied$speed <- cutoff_default()[["speed"]]
-      updateNumericInput(session, "cutoff_speed", value = applied$speed)
+    if (!isTRUE(is.finite(input$cutoff_speed))) {
+      updateNumericInput(session, "cutoff_speed", value = cutoff_default()[["speed"]])
     }
   }, once = TRUE)
 
   observeEvent(input$cutoff_distance, {
-    x <- input$cutoff_distance
-    if (is.numeric(x) && !is.na(x)) {
-      applied$distance <- x
-    } else {
-      applied$distance <- cutoff_default()[["distance"]]
-      updateNumericInput(session, "cutoff_distance", value = applied$distance)
+    if (!isTRUE(is.finite(input$cutoff_distance))) {
+      updateNumericInput(session, "cutoff_distance", value = cutoff_default()[["distance"]])
     }
   }, once = TRUE)
 
-  # Determine if the apply button needs to be clicked. Returns TRUE when
-  # the selected variable's input box contains a number different from its
-  # currently applied cutoff.
+  # TRUE when the sidebar holds a valid cutoff and any setting differs from
+  # the applied settings, i.e. when Apply needs to be clicked
   apply_pending <- reactive({
-    req(input$select_var)
-    x <- input[[paste0("cutoff_", input$select_var)]]
-    current <- applied[[input$select_var]]
-    is.numeric(x) && !is.na(x) && !is.null(current) && x != current
+    a <- req(applied())
+    s <- sidebar_settings()
+    isTRUE(is.finite(s$cutoff)) &&
+      (s$var != a$var || s$recursive != a$recursive || s$cutoff != a$cutoff)
   })
 
   observe({
@@ -232,28 +244,22 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     # The button is disabled unless there's a valid value to apply, but check
     # anyway in case the box changed after the button was last updated
     req(apply_pending())
-    var <- input$select_var
-    applied[[var]] <- input[[paste0("cutoff_", var)]]
+    applied(sidebar_settings())
   })
 
   # Put the selected variable's cutoff back to its default (the data maximum)
-  # and apply it
+  # and apply it together with the other sidebar settings. This removes no
+  # points.
   observeEvent(input$reset_cutoff, {
-    var <- input$select_var
-    def <- cutoff_default()[[var]]
-    updateNumericInput(session, paste0("cutoff_", var), value = def)
-    applied[[var]] <- def
-  })
-
-  # Applied cutoff for the selected variable
-  cutoff <- reactive({
-    req(input$select_var)
-    req(applied[[input$select_var]])
+    s <- sidebar_settings()
+    s$cutoff <- cutoff_default()[[s$var]]
+    updateNumericInput(session, paste0("cutoff_", s$var), value = s$cutoff)
+    applied(s)
   })
 
   outl_rows <- reactive({
-    if (input$select_var == "speed" && isTRUE(input$recursive)) {
-      threshold <- cutoff()
+    if (req(applied())$recursive) {
+      threshold <- applied()$cutoff
       map2(data, outl_raw(), function(x, xx) {
         rows <- seq_len(nrow(x))
         while (nrow(x) > 0 && max(xx[["speed"]]) > threshold) {
@@ -281,8 +287,8 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   filtered_outl <- reactive({
-    var <- input$select_var
-    hi <- cutoff()
+    var <- req(applied())$var
+    hi <- applied()$cutoff
     filtered <- lapply(outl(), \(x) {
       keep <- x[[var]] <= hi
       out <- x[keep, , drop = FALSE]
@@ -306,12 +312,12 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   })
 
   reactive_data <- reactive({
-    req(input$select_var)
+    var <- req(applied())$var
 
     # Values of the selected variable (speed or distance), pooled across
     # animals. lapply() keeps this a plain vector; sapply() would return a
     # matrix when all animals have the same number of locations.
-    values <- unlist(lapply(outl(), \(x) x[[input$select_var]]), use.names = FALSE)
+    values <- unlist(lapply(outl(), \(x) x[[var]]), use.names = FALSE)
     req(length(values) > 0)
 
     tibble(value = values)
@@ -319,18 +325,19 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
 
   output$plot <- renderGirafe({
 
-    hi <- cutoff()
+    var <- req(applied())$var
+    hi <- applied()$cutoff
 
     plot_data <- reactive_data() |>
       filter(value <= hi)
 
     validate(need(nrow(plot_data) > 0, "No points at or below the cutoff."))
 
-    unit <- if (input$select_var == "speed") "m/s" else "m"
+    unit <- if (var == "speed") "m/s" else "m"
 
     gg <- ggplot(plot_data, aes(x = value)) +
       geom_histogram_interactive(hover_nearest = TRUE) +
-      labs(x = if (input$select_var == "speed") "Speed (m/s)" else "Distance (m)") +
+      labs(x = if (var == "speed") "Speed (m/s)" else "Distance (m)") +
       theme_ipsum_rc(plot_margin = margin(10, 10, 10, 10))
 
     # Plot ticks below histogram showing where data values are. This allows us
@@ -377,8 +384,8 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
   # Each individual's data at or below the cutoff; NULL if it has no such points
   filtered_data <- reactive({
 
-    var <- input$select_var
-    hi <- cutoff()
+    var <- req(applied())$var
+    hi <- applied()$cutoff
     map2(data, outl_rows(), function(a, r) {
       b <- r$outl
       ind <- which(b[[var]] <= hi)
@@ -427,11 +434,12 @@ shinyModule <- function(input, output, session, data){ ## The parameter "data" i
     }
   })
 
-  # The applied cutoffs are only set once the UI has been opened in a browser.
-  # Until then, pass the input data on unchanged so the next app can run.
+  # The applied settings are only set once the UI has been opened in a
+  # browser. Until then, pass the input data on unchanged so the next App can
+  # run.
   return(
     reactive({
-      if (is.null(applied$speed)) data else dat.f()
+      if (is.null(applied())) data else dat.f()
     })
   )
 }
