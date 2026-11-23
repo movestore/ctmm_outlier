@@ -9,7 +9,7 @@ GitHub repository: https://github.com/movestore/ctmm_outlier
 </p>
 
 ## Description
-This app removes relocations that are likely outliers based on a user-selected
+This App removes relocations that are likely outliers based on a user-selected
 maximum speed or distance. Based on the `outlie()` function of the ctmm
 package.
 
@@ -26,13 +26,13 @@ making isolated values easier to identify. Hover over a tick to see its value.
 Enter a maximum value for either speed or distance to remove relocations above
 that value from the output data and the App's plots.
 
-This app only allows you to filter on one variable (speed or distance) at a
+This App only allows you to filter on one variable (speed or distance) at a
 time. In general, it is preferable to first attempt to identify outliers based
 on speed, as long gaps between fixes can lead to large distances between
 observations that are nonetheless reasonable given the time gap between them.
 If you remove speed-based outliers and still find anomalous distances,
-you can run this app again using distance-based filtering to remove them as
-well. Simply add this app to your workflow twice, using the first one to
+you can run this App again using distance-based filtering to remove them as
+well. Simply add this App to your Workflow twice, using the first one to
 filter for speed and the second to filter for distance.
 
 ### Application scope
@@ -66,16 +66,20 @@ is only available when filtering on speed.
 variable to retain in the data. Relocations above this value are removed once
 the **Apply** button is clicked. By default no points are removed.
 
-**Apply**: Click this button to filter the data using the currently entered
-**Maximum speed** or **Maximum distance**. The button is shown in blue when
-the value in the **Maximum speed** or **Maximum distance** box is yet to be
-applied.
+**Apply**: Click this button to filter the data using the current **Select
+Variable**, **Recursive** and **Maximum speed** or **Maximum distance**
+settings. Changes to any of these settings only modify the plots and output
+data once **Apply** is clicked. The button is shown in blue when
+there are changes that are yet to be applied.
 
 **Reset to maximum**: Set the cutoff value back to the default for the
-selected variable and apply it. This re-adds all points that had been removed.
+selected variable and apply it, together with the current **Select Variable**
+and **Recursive** settings. This re-adds all points that had been removed.
 
-**Store settings**: Click to store the current settings of the app for future
-workflow runs.
+**Store settings**: Click to store the current settings of the App for future
+Workflow runs.
+
+**Restore default settings**: Click to restore the App's default settings.
 
 ### Changes in output data
 The App filters the input data based on the maximum entered by the user.
@@ -88,7 +92,7 @@ entirely.
 an animal are removed, the animal is removed from the output. The App displays a
 note and produces a warning when any animals are excluded in this way. If no
 animals include any points at or below the maximum, neither plot is displayed
-and the app returns no data.
+and the App returns no data.
 
 ### Technical details
 - Speed and distance are calculated per animal with `ctmm::outlie()`. See its
@@ -97,8 +101,10 @@ and the app returns no data.
 - With **Recursive**, `outlie()` is rerun after each round of removals, so the
   speeds used for filtering and in the plots are those of the remaining data.
 - Speeds are shown in m/s and distances in m, in both the input and the plots.
-- The output always reflects the settings that were most recently applied, not
-  necessarily those that are currently displayed in the input boxes.
+- The data are filtered by one variable at a time. Applying a distance cutoff
+  replaces an applied speed cutoff, and vice versa.
+- The plots and the output always reflect the settings that were most recently
+  applied, not necessarily those currently shown in the sidebar.
 
 The outlier statistics are described in Fleming, C. H., et al. (2020). A
 comprehensive framework for handling location error in animal tracking data.
